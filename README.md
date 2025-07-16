@@ -4,14 +4,14 @@ Converts onnx ML models to standalone Rust and C libraries
 # Scope
 We use this in production, but note we only do it for a class of very tiny models (KByte range).  And we do test it with a few in the MByte range.  I don't think this makes sense for anything in the GByte range.  It is not intended to compete with dedicated CPU LLM projects.
 
-We are not doing any highlevel optimization like threading because we don't, but are planning on doing the best lowlevel optimizations we can without going to intrinsics or assembly (idea it to have this handled by tinygrad).
+We are not doing any highlevel optimization like threading because we don't, but are planning on doing the best lowlevel optimizations we can without going to intrinsics or assembly (idea is to have this handled by tinygrad).
 
 # Install
 
 Download the code from github and pull the submodules.
 
 ```bash
-git clone --recurse-submodules https://github.com/ml2code/ml2code.git
+git clone --recurse-submodules https://github.com/bitflux-ai/ml2code.git
 ```
 
 You can install using uv or some other python package manager.
@@ -67,7 +67,7 @@ Mostly this build is to make sure the library builds cleanly which is why the bu
 
 ```
 .
-├── export
+└── export
    ├── model
    │  ├── model.h
    │  └── weights.h
@@ -82,9 +82,9 @@ To run the benchmark you need to have a CUDA enabled GPU and the CUDA toolkit in
 ```bash
 ml2code --model ./tmp/efficientnet-lite4-11.onnx --benchmark --count 100
 ```
-Adjust --count until you get decent results.
+Adjust --count until you the scope of results works for you.
 
-## test
+## Test
 This test is intended to be a sanity check that the code generates the same results as the original model.
 
 NOTE: Running this on efficientnet-lite4-11.onnx gives an error.  I think this is signal that there is some problem in underlying libraries here.  It passes for the simple models I use in production.  Not sure what to make of this yet.  Concerning that torch is the outlier.

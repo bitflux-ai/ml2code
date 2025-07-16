@@ -6,13 +6,6 @@ import subprocess
 from collections import namedtuple
 from .generate import SrcGenerator
 from tinygrad.dtype import dtypes
-from tinygrad.runtime.ops_clang import CLANG_PROG_HEADER
-
-CLANG_TYPE_MAP = {dtypes.long:["long",8], dtypes.ulong:["unsigned long",8], dtypes.float64:["double",8], dtypes.double:["double",8],
-                 dtypes.int:["int",4], dtypes.uint32:["unsigned int",4], dtypes.int32:["int",4], dtypes.float:["float",4],
-                 dtypes.int16:["short",2], dtypes.uint16:["unsigned short",2], dtypes.short:["short",2], dtypes.ushort:["unsigned short",2],
-                 dtypes.int8:["char",1], dtypes.uint8:["unsigned char",1], dtypes.char:["char",1], dtypes.uchar:["unsigned char",1], dtypes.bool:["bool",1]}
-
 
 ClangRenderedCode = namedtuple("ClangRenderedCode", "buffer_initializers, weights_initialization, net_run_args, net_run_body, weights_code, functions")
 
@@ -20,7 +13,6 @@ class ClangSrc(SrcGenerator):
 
   def __init__(self, tinymodel, settings):
     super().__init__(tinymodel, settings)
-    self.type_map = CLANG_TYPE_MAP
 
   def render_code(self, g, input, output, weight):
     input_names = list(g.inputs.keys())
@@ -29,8 +21,8 @@ class ClangSrc(SrcGenerator):
     buffer_initializers = []
     net_run_args = []
     for name,(length,dtype,_) in g.bufs.items():
-      dtype_name = self.type_map[dtype][0]
-      count = int(length/self.type_map[dtype][1])
+      dtype_name = self.render_dtype_name(dtype)
+      count = int(length/dtype.itemsize)
       # Handle the commandline arg for the run() function
       if name in input_names+output_names:
         net_run_args.append(f"{dtype_name}* {name}")
@@ -38,7 +30,7 @@ class ClangSrc(SrcGenerator):
       # Construct a list of initializers for the rust struct,
       #  either zero or consts with encoded weights
       if not self.settings['noweights'] and name in list(g.bufs_to_save.keys()):
-        line = f"{dtype_name} *{name} = (float *){name.upper()}_DATA;"
+        line = f"{dtype_name} *{name} = ({dtype_name} *){name.upper()}_DATA;"
       else:
         line = f"{dtype_name} {name}[{count}];"
       buffer_initializers.append(line)
@@ -49,8 +41,8 @@ class ClangSrc(SrcGenerator):
     weights_code = []
     weights = bytes()
     for name,cl in g.bufs_to_save.items():
-      dtype_size = self.type_map[cl.dtype][1]
-      dtype_name = self.type_map[cl.dtype][0]
+      dtype_size = cl.size
+      dtype_name = self.render_dtype_name(cl.dtype)
       start = int(len(weights)/dtype_size)
       # Construct the code to initialize the weights
       weights_initialization.append(f"{' '*2}memcpy({name}, weights + {start}, {cl.size*dtype_size});")
@@ -83,7 +75,6 @@ class ClangSrc(SrcGenerator):
     # Clean up the functions
     functions = []
     for k,fn in g.functions.items():
-      fn = fn.replace(CLANG_PROG_HEADER, "static ")
       fn = fn.replace(k, k.lower())
       functions.append(fn)
     functions = "\n\n".join(functions)

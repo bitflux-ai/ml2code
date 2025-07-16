@@ -6,8 +6,10 @@ from .generate import SrcGenerator
 
 
 # Tinygrad includes
-from tinygrad.runtime.ops_rust import RUST_TYPE_MAP
+from tinygrad.renderer.rust import RUST_TYPE_MAP
+from tinygrad.dtype import dtypes
 
+RUST_UNPACK_MAP = {'f16':'e','f32':'f','f64':'d','i8':'b','i16':'h','i32':'i','i64':'q','u8':'B','u16':'H','u32':'I','u64':'Q'}
 
 RustRenderedCode = namedtuple("RustRenderedCode", "net_struct_members net_struct_initializers net_weights_initialization net_run_args net_run_body weights_bytes_conversion input_bytes_conversion weights_code functions")
 
@@ -18,6 +20,18 @@ class RustSrc(SrcGenerator):
     super().__init__(tinymodel, settings)
     self.type_map = RUST_TYPE_MAP
 
+  def box_wrap(self, s):
+    if self.settings['box']:
+      return f"Box::new({s})"
+    else:
+      return s
+
+  def box_declare(self, s):
+    if self.settings['box']:
+      return f"Box<{s}>"
+    else:
+      return s
+
   def render_code(self, g, input, output, weight):
     input_names = list(g.inputs.keys())
     output_names = list(g.outputs.keys())
@@ -26,8 +40,8 @@ class RustSrc(SrcGenerator):
     net_struct_initializers = []
     net_run_args = []
     for name,(length,dtype,_) in g.bufs.items():
-      dtype_name = self.type_map[dtype][0]
-      count = int(length/self.type_map[dtype][1])
+      dtype_name = self.type_map[dtype.name]
+      count = int(length/dtype.itemsize)
       # Handle the commandline arg for the run() function
       if name in input_names:
         net_run_args.append(f"{name}: &[{dtype_name}; {count}]")
@@ -36,13 +50,14 @@ class RustSrc(SrcGenerator):
         net_run_args.append(f"{name}: &mut [{dtype_name}; {count}]")
         continue
       # Construct a list out the buffers for the rust struct
-      net_struct_members.append(f"{' '*2}{name}: Box<[{dtype_name}; {count}]>,")
+      net_struct_members.append(f"{' '*2}{name}: {self.box_declare(f"[{dtype_name}; {count}]")},")
       # Construct a list of initializers for the rust struct,
       #  either zero or consts with encoded weights
       if not self.settings['noweights'] and name in list(g.bufs_to_save.keys()):
-        line = f"{' '*6}{name}: Box::new({name.upper()}_DATA),"
+        line = f"{' '*6}{name}: {self.box_wrap(f"{name.upper()}_DATA")},"
       else:
-        line = f"{' '*6}{name}: Box::new([0.0; {count}]),"
+        b = str(struct.unpack(RUST_UNPACK_MAP[dtype_name], b'\x00'*dtype.itemsize)[0])
+        line = f"{' '*6}{name}: {self.box_wrap(f"[{b}; {count}]")},"
       net_struct_initializers.append(line)
     net_struct_members = "\n".join(net_struct_members)
     net_struct_initializers = "\n".join(net_struct_initializers)
@@ -52,15 +67,15 @@ class RustSrc(SrcGenerator):
     weights_code = []
     weights = bytes()
     for name,cl in g.bufs_to_save.items():
-      dtype_size = self.type_map[cl.dtype][1]
-      dtype_name = self.type_map[cl.dtype][0]
+      dtype_size = cl.dtype.itemsize
+      dtype_name = self.render_dtype_name(cl.dtype)
       start = int(len(weights)/dtype_size)
       # Construct the code to initialize the weights
       net_weights_initialization.append(f"{' '*4}self.{name}.copy_from_slice(&weights[{start}..{start+cl.size}]);")
       weight_buf = bytes(cl._buf)
       # Encode the weights
-      wbytes = [str(struct.unpack('f', weight_buf[i:i+4])[0]) for i in range(0, len(weight_buf), dtype_size)]
-      weights_code.append(f"pub const {name.upper()}_DATA: [{dtype_name}; {cl.size}] = [{','.join(wbytes)}];")
+      ebytes = [str(struct.unpack(RUST_UNPACK_MAP[dtype_name], weight_buf[i:i+dtype_size])[0]) for i in range(0, len(weight_buf), dtype_size)]
+      weights_code.append(f"pub const {name.upper()}_DATA: [{dtype_name}; {cl.size}] = [{','.join(ebytes)}];")
       weights += weight_buf
     # Writes the weights to disk if they aren't encoded
     if self.settings['noweights']:
@@ -98,6 +113,8 @@ class RustSrc(SrcGenerator):
       # clean out the CDLL stuff
       fn = fn.replace("#[no_mangle]\n", "")
       fn = fn.replace("extern \"C\" ", "")
+      # strip out any f16 hacks
+      fn = fn.replace("#![feature(f16)]\n", "")
       fn = fn.replace(k, k.lower())
       functions.append(fn)
     functions = "\n\n".join(functions)

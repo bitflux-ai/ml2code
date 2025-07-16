@@ -8,17 +8,17 @@ from pandas.core.common import flatten
 from onnx.helper import tensor_dtype_to_np_dtype
 import onnx2torch
 import onnxruntime as ort
+from onnxhack.onnxed import get_run_onnx
 
 # from tinygrad
+from extra.export_model import jit_model
 from tinygrad import Tensor, Device
-from tinygrad.engine.jit import TinyJit
-from extra.onnx import get_run_onnx
-from extra.export_model import export_model, compile_net, jit_model
 
+# This is the New tinygrad native onnx frontend
+#from frontend.onnx import OnnxRunner
 
 def set_tinygrad_device(device):
   Device.DEFAULT = device.upper()
-
 
 def compare_lists(n1, l1, n2, l2):
   if len(l1)!= len(l2):
@@ -166,6 +166,8 @@ class TinyOnnx:
   def __init__(self, onnx_model):
     self.xname = onnx_model.graph.input[0].name
     self.yname = onnx_model.graph.output[0].name
+    # New tinygrad native onnx frontend
+    #self.run_onnx = OnnxRunner(onnx_model)
     self.run_onnx = get_run_onnx(onnx_model)
 
   def forward(self, x):
@@ -174,7 +176,6 @@ class TinyOnnx:
     o = self.run_onnx({self.xname: x}, debug=False)[self.yname]
     # print(o)
     return o
-
 
 class TinyModel(BaseModel):
 

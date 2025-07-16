@@ -7,6 +7,7 @@ import subprocess
 
 # Tinygrad includes
 from extra.export_model import compile_net
+from tinygrad.dtype import dtypes
 #from tinygrad.nn.state import get_state_dict
 
 
@@ -22,20 +23,25 @@ class SrcGenerator:
     self.settings = settings
     self.runner = tinymodel.runner
     self.special_names = tinymodel.special_names
+    self.type_map = None
+
+  def render_dtype_name(self, dtype):
+    if self.type_map is None: return dtype.name
+    return self.type_map[dtype.name]
 
   def get_variable_tuples(self, g):
     input_name = list(g.inputs.keys())[0]
     output_name = list(g.outputs.keys())[0]
-    input_type = self.type_map[g.bufs[input_name][1]]
-    output_type = self.type_map[g.bufs[output_name][1]]
-    input_len = int(g.inputs[input_name]//input_type[1])
-    output_len = int(g.outputs[output_name]//output_type[1])
+    input_type = g.bufs[input_name][1]
+    output_type = g.bufs[output_name][1]
+    input_len = int(g.inputs[input_name]//input_type.itemsize)
+    output_len = int(g.outputs[output_name]//output_type.itemsize)
     weight_len = 0
     for _,cl in g.bufs_to_save.items():
       weight_len += cl.size
-    input = IOTuple(input_name, input_len, DTypeTuple(input_type[0],input_type[1]))
-    output = IOTuple(output_name, output_len, DTypeTuple(output_type[0],output_type[1]))
-    weight = IOTuple('weight', weight_len, DTypeTuple(input_type[0],input_type[1])) # HACK assume input type for weights
+    input = IOTuple(input_name, input_len, DTypeTuple(self.render_dtype_name(input_type),input_type.itemsize))
+    output = IOTuple(output_name, output_len, DTypeTuple(self.render_dtype_name(output_type),output_type.itemsize))
+    weight = IOTuple('weight', weight_len, DTypeTuple(self.render_dtype_name(input_type),input_type.itemsize)) # HACK assume input type for weights
     return input, output, weight
 
   def metadata(self,g):
@@ -46,7 +52,6 @@ class SrcGenerator:
 
   def generate_functions(self):
     functions, statements, bufs, bufs_to_save = compile_net(self.runner, self.special_names)
-    #state = get_state_dict(self.model)
     input_names = []
     output_names = []
     for _,name in self.special_names.items():

@@ -20,6 +20,7 @@ def main():
   parser.add_argument("--export_dir", type=str, default="export", help="Where do we put the generated src code")
   parser.add_argument("--template_dir", type=str, default="templates", help="Where do we put the templates")
   parser.add_argument("--noweights", action="store_true", help="Don't Encode weights in the generated src code")
+  parser.add_argument("--box", action="store_true", help="RUST: Wrap model buffers in Box<> for larger models")
 
   args = parser.parse_args()
 
@@ -27,13 +28,15 @@ def main():
     "template_dir":os.path.join(args.template_dir, args.language),
     "export_dir":args.export_dir, "noweights":args.noweights, "test":args.test,
     "author":args.author, "version":args.version, "model_name":args.name,
-    "language":args.language, "model_file":args.model
+    "language":args.language, "model_file":args.model, "box":args.box
   }
 
   if not os.path.exists(settings["export_dir"]):
     os.makedirs(settings["export_dir"])
 
-  set_tinygrad_device(args.language.upper())
+  # set the device to CPU if we are using clang, just how tinygrad does it
+  device = "CPU" if args.language == "clang" else args.language.upper()
+  set_tinygrad_device(device)
 
   outputs = {}
   om = OnnxModel(settings["model_file"])
