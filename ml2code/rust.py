@@ -107,6 +107,10 @@ class RustSrc(SrcGenerator):
     for i in range(input.type.size):
       input_bytes_conversion.append(f"input_bytes[i*4+{str(i)}]")
     input_bytes_conversion = ", ".join(input_bytes_conversion)
+    float4 = "#[repr(align(16))]\n#[derive(Clone, Copy)]\nstruct Float32x4([f32; 4]);"
+    found_float4 = False
+    float2 = "#[repr(align(16))]\n#[derive(Clone, Copy)]\nstruct Float32x2([f32; 2]);"
+    found_float2 = False
     # Clean up the functions
     functions = []
     for k,fn in g.functions.items():
@@ -116,7 +120,19 @@ class RustSrc(SrcGenerator):
       # strip out any f16 hacks
       fn = fn.replace("#![feature(f16)]\n", "")
       fn = fn.replace(k, k.lower())
+      # remove float4
+      if float4 in fn:
+        found_float4 = True
+        fn = fn.replace(float4, "")
+      # remove float2
+      if float2 in fn:
+        found_float2 = True
+        fn = fn.replace(float2, "")
       functions.append(fn)
+    if found_float4:
+      functions = [float4] + functions
+    if found_float2:
+      functions = [float2] + functions
     functions = "\n\n".join(functions)
     return RustRenderedCode(net_struct_members, net_struct_initializers, net_weights_initialization, net_run_args, net_run_body, weights_bytes_conversion, input_bytes_conversion, weights_code, functions)
 
