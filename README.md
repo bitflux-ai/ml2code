@@ -4,7 +4,7 @@ Converts onnx ML models to standalone Rust and C libraries
 # Scope
 We use this in production, but note we only do it for a class of very tiny models (KByte range).  And we do test it with a few in the MByte range.  I don't think this makes sense for anything in the GByte range.  It is not intended to compete with dedicated CPU LLM projects.
 
-We are not doing any highlevel optimization like threading because we don't, but are planning on doing the best lowlevel optimizations we can without going to intrinsics or assembly (idea is to have this handled by tinygrad).
+We are not doing any highlevel optimization like threading because we don't want or need it, but are planning on doing the best lowlevel optimizations we can without going to intrinsics or assembly (idea is to have this handled by tinygrad).
 
 # Install
 
@@ -75,8 +75,15 @@ Mostly this build is to make sure the library builds cleanly which is why the bu
       ├── main.c
       └── model_test
 ```
+
+## Optimizing
+Because ml2code is a wrapper on tinygrad there are a number of flags that can be used to optimize the code generation process.  These flags are passed through to tinygrad.
+The primary one that can improve performance is BEAM.  This will trigger tinygrad to break up the kernels into mathematically equivalent but different shaped operations.  It then tests the throughput of the different kernels to find the best one.  `BEAM=4` will do more passes than `BEAM=1`.  This is set as an environment variable, for example:
+```bash
+BEAM=1 ml2code --model ./tmp/efficientnet-lite4-11.onnx --language rust --nobuild
+```
 ## Benchmarking
-We have a very simple benchmark built into the tool.  It require CUDA support and isn't very good.  Yet it can show some interesting patterns.
+We have a very simple benchmark built into the tool.  It require CUDA support and isn't very robust.  Nevertheless, it can show some interesting patterns.
 
 To run the benchmark you need to have a CUDA enabled GPU and the CUDA toolkit installed.  Then you can run the benchmark with the following command.
 ```bash
